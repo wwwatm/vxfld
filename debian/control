@@ -1,0 +1,19 @@
+Source: vxfld
+Maintainer: Michael Fine <mfine@cumulusnetworks.com>
+Section: net
+Priority: optional
+Build-Depends: python-all (>= 2.6.6-3),
+ debhelper (>= 7),
+ python-setuptools,
+ python-docutils
+Standards-Version: 3.9.1
+X-Python-Version: >= 2.7
+
+Package: vxfld
+Architecture: all
+Depends: ${misc:Depends},
+ python (>= 2.7),
+ python-dpkt,
+ python-daemon
+Description: VXLAN Flooding Service
+

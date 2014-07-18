@@ -1,0 +1,211 @@
+#! /usr/bin/python
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
+
+# Copyright 2014 Cumulus Networks, Inc. All rights reserved.
+# Copyright (C) 2014 Metacloud Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc.
+# 51 Franklin Street, Fifth Floor
+# Boston, MA  02110-1301, USA.
+
+import subprocess
+import sys
+import socket
+import re
+import time
+
+import vxfld.common
+import vxfld.vxfldpkt
+
+
+def util_exec(cmd):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = p.communicate()
+    return out.split('\n')
+
+
+def get_vxlan_config():
+    lgr.debug('Checking vxlan config')
+
+    id_pat = re.compile('vxlan\s+id\s+(\d+)\s+')
+    local_pat = re.compile('\s+local\s+(\d+\.\d+\.\d+.\d+)\s+')
+    sn_pat = re.compile('\s+(svcnode|remote)\s+(\d+\.\d+\.\d+.\d+)\s?')
+
+    ret = {}
+    for line in util_exec(["ip", "-d", "link", "show"]):
+        m = id_pat.search(line)
+        if m:
+            # This line has a vxlan specification
+            # lgr.debug('Processing matching vxlan config line: %s' % line)
+            vni = int(m.group(1))
+            m = local_pat.search(line)
+            if m:
+                local = m.group(1)
+            else:
+                local = conf.local_addr
+            if local == '0.0.0.0':
+                lgr.warn('No local addr for VNI %d.  Skipping' % vni)
+                continue
+            m = sn_pat.search(line)
+            if m:
+                sn = m.group(2)
+            else:
+                sn = conf.svcnode
+            if sn == '0.0.0.0':
+                lgr.warn('No svcnode for VNI %d.  Skipping' % vni)
+                continue
+
+            # got vni, local and sn.  Add to dict
+            ret[vni] = [local, sn]
+
+    if conf.fakevtep:
+        # Fake it for testing
+        ret = fake_vxlan_config()
+    return ret
+
+
+def fake_vxlan_config():
+    conf12 = {
+        1: ['12.1.1.1', conf.svcnode],
+        2: ['12.1.1.1', conf.svcnode],
+        3: ['12.1.1.1', conf.svcnode],
+        4: ['12.1.1.1', conf.svcnode],
+        5: ['12.1.1.1', conf.svcnode],
+        6: ['12.1.1.6', conf.svcnode],
+        7: ['12.1.1.7', conf.svcnode],
+        8: ['12.1.1.8', conf.svcnode],
+        9: ['12.1.1.9', conf.svcnode],
+    }
+
+    conf13 = {
+        1: ['13.1.1.1', conf.svcnode],
+        2: ['13.1.1.1', conf.svcnode],
+        3: ['13.1.1.1', conf.svcnode],
+        4: ['13.1.1.1', conf.svcnode],
+        5: ['13.1.1.1', conf.svcnode],
+        6: ['13.1.1.6', conf.svcnode],
+        7: ['13.1.1.7', conf.svcnode],
+        8: ['13.1.1.8', conf.svcnode],
+        9: ['13.1.1.9', conf.svcnode],
+    }
+
+    if conf.fakevtep == 1:
+        return conf12
+    if conf.fakevtep == 2:
+        return conf13
+
+
+def send_refresh(vni_data):
+    # Build the right datastructure for the message
+    # vni_data is {vni: [local, svcnode], ...}
+    # need msg_data as {svcnode: {vni: [local]}}
+    msg_data = {}
+    for (vni, addrs) in vni_data.items():
+        tmp = msg_data.get(addrs[1], dict())
+        tmp[vni] = [addrs[0]]
+        msg_data[addrs[1]] = tmp
+
+    for (sn, sn_data) in msg_data.items():
+        rp = vxfld.vxfldpkt.Refresh(holdtime=conf.holdtime, originator=True)
+        rp.add_vni_vteps(sn_data)
+        lgr.debug("Sending to %s: %s" % (sn, sn_data))
+        sock.sendto(str(rp), (sn, conf.vxfld_port))
+
+
+def run():
+    """
+    Periodically sends the registration method to the svcnode address.
+    Usually at regualr time intervals but may be accelerated if
+    membership has changed.
+    """
+
+    # Open a socket for sending the refresh msgs
+    global sock
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except socket.error as e:
+        raise RuntimeError("opening transmit socket : " + str(e))
+
+    vni_config = {}  # vni_config[vni] = [local_ip, sn_ip]
+
+    next_refresh = 0
+    next_config_check = 0
+
+    def sleep_time():
+        return max(0, min(next_refresh - now, next_config_check - now))
+
+    while True:
+        now = int(time.time())
+
+        if now >= next_config_check:
+            next_config_check = now + conf.config_check_rate
+            current = get_vxlan_config()
+            if not current == vni_config:
+                # Due to change, send refresh immediately and schedule a
+                # retransmit for one second hence
+                vni_config = current
+                send_refresh(vni_config)
+                next_refresh = now + 1
+
+        if now >= next_refresh:
+            send_refresh(vni_config)
+            # TODO Need to add some jitter to next refresh time!
+            next_refresh = now + conf.holdtime / conf.refresh_rate
+
+        time.sleep(sleep_time())
+
+
+########################################################################
+#
+# Main
+#
+# Process cmd line args, do setup and then run
+#
+
+# Set up argparse with common args and then vxrd-specific ones
+prsr = vxfld.common.common_parser()
+prsr.add_argument('-s', '--svcnode',
+                  help='The address of the service node to send registration '
+                       'messages to.  It is used for those VXLANs that do '
+                       'not have a svcnode explicitly specified on the vxlan '
+                       'interface.')
+prsr.add_argument('-a', '--local-addr',
+                  help='The local tunnel endpoint address for all VXLAN '
+                       'interfaces which do not have an address explicitly '
+                       'specified.')
+
+# for testing, undocumented
+prsr.add_argument('-F', '--fakevtep',
+                  default=0,
+                  type=int,
+                  help='Fake local vtep configuration.  Used for testing.')
+
+args = prsr.parse_args()
+
+conf, lgr = vxfld.common.initial_setup(args)
+
+# Now the initialization not common
+# Start monitoring
+if conf.monitor:
+    vxfld.common.start_monit('vxrd')
+
+try:
+    sys.exit(run())
+except KeyboardInterrupt:
+    sys.stderr.write("Warning: keyboard abort\n")
+    sys.exit(1)
+except RuntimeError as inst:
+    sys.stderr.write("ERROR: %s\n" % str(inst))
+    sys.exit(1)

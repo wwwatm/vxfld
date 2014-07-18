@@ -1,0 +1,376 @@
+#! /usr/bin/python
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
+
+# Copyright 2014 Cumulus Networks, Inc. All rights reserved.
+# Copyright (C) 2014 Metacloud Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc.
+# 51 Franklin Street, Fifth Floor
+# Boston, MA  02110-1301, USA.
+
+"""
+Main Sections in the code.  Used to try keep some organization
+
+    Replicator packet handling functions
+    vxfld msg handling
+    Forwarding Database, db management and query
+    Miscellaneous
+    Run loop
+    Python main with initial setup
+"""
+
+
+import sys
+import socket
+import select
+import dpkt
+import time
+import signal
+import atexit
+import errno
+import vxfld.common
+import vxfld.vxfldpkt
+
+
+########################################################################
+#
+# Replicator packet handling
+#
+class VXLAN(dpkt.Packet):
+    """
+
+    VXLAN header parsing/editing.  Derived from DPKT and so dpkt module
+    must be installed.
+
+    VLXAN per draft-mahalingam-dutt-dcops-vxlan-00.txt
+    The packing is pretty funky, so the two fields that actually matter;
+    the I flag and VNI are formed as properties (i and vni) in the constructor
+    as opposed to the dpkt header formatter.
+    """
+
+    __hdr__ = (
+        ('flags', 'B', 0x08),
+        ('r', '3s', '\x00' * 3),
+        ('vni_r', 'I', 0x0),
+    )
+
+    @property
+    def i(self):
+        return ((self.flags >> 3) & 0x1)
+
+    @i.setter
+    def i(self, i):
+        self.flags = ((self.flags & 0x08) | (i << 3))
+
+    @property
+    def vni(self):
+        return ((self.vni_r >> 8) & 0x00ffffff)
+
+    @vni.setter
+    def vni(self, vni):
+        self.flags = ((self.vni_r & 0x00ffffff) | (vni << 8))
+
+
+def handle_vxlan_packet(buf, addr):
+    """ The entry point from the sock receive. """
+    (srcip, srcport) = addr
+    v = VXLAN(buf)
+
+    if not v.i:
+        return
+
+    fwd_list = fdb_addrs(v.vni)
+    in_fdb = False
+    for dest in fwd_list:
+        if dest == srcip:
+            in_fdb = True
+            continue
+        lgr.debug("Sending packet from %s to %s, vni %s" % (srcip,
+                                                            dest,
+                                                            v.vni))
+        relay_pkt(buf, dest, srcip, srcport)
+
+    if not in_fdb:
+        #  Add this <vni, srcip> to the fdb and tell peers about it
+        lgr.debug("Learning ip %s, vni %d from VXLAN pkt" % (srcip, v.vni))
+        fdb_add(v.vni, srcip, int(time.time()) + conf.holdtime)
+        pkt = vxfld.vxfldpkt.Refresh(holdtime=conf.holdtime, originator=False)
+        pkt.add_vni_vteps({v.vni: [srcip]})
+        send_to_peers(pkt)
+
+
+def relay_pkt(pkt, dstip, srcip, srcport):
+    u = dpkt.udp.UDP(
+        dport=conf.vxlan_port,
+        sport=srcport,
+        data=pkt,
+    )
+    u.ulen = len(u)
+    i = dpkt.ip.IP(
+        dst=socket.inet_aton(dstip),
+        src=socket.inet_aton(srcip),
+        p=dpkt.ip.IP_PROTO_UDP,
+        data=u,
+    )
+    i.len = len(i)
+    if not conf.no_replicate:
+        # Only have socket if replicating
+        tsock.sendto(str(i), (dstip, 0))
+
+
+def print_pkt(pkt):
+    """ Simple print of packet.  Useful for debugging. """
+
+    cnt = 0
+    for I in str(pkt):
+        print "%02x" % ord(I),
+        if cnt % 16 == 15:
+            print
+        cnt += 1
+    print
+
+
+########################################################################
+#
+# vxfld message handling
+#
+def handle_vxfld_msg(buf, addr):
+    """ This is the entry function for the vxfld message.
+
+    For now we expect only a refresh message and so creates one of that
+    class for any received message.  In future, it will create a
+    vxfldpkt object of the correct class based on the msg type
+    """
+
+    (srcip, srcport) = addr
+
+    pkt = vxfld.vxfldpkt.Refresh(buf)
+    if pkt.type != vxfld.vxfldpkt.MsgType.refresh:
+        lgr.warn('Unexpected vxfld pkt of type %d' % pkt.type)
+        return
+
+    lgr.debug('Refresh msg from %s: %s' % (srcip, str(pkt.vni_vteps)))
+
+    ageout = int(time.time()) + pkt.holdtime
+    for (vni, iplist) in pkt.vni_vteps.items():
+        for ip in iplist:
+            fdb_add(vni, ip, ageout)
+
+    if pkt.originator:
+        # Send on to all peers but set originator to 0 so that they do
+        # not forward on
+        pkt.originator = 0
+        send_to_peers(pkt)
+
+
+def send_to_peers(pkt):
+    for peer in conf.servers:
+        # TODO Skip myself!
+        psock.sendto(str(pkt), (peer, conf.vxfld_port))
+
+
+########################################################################
+#
+# Forwarding DB
+#
+
+# Data structure is a dict of dicts
+#    fdb[vni] = {addr1: ageout1, addr2: ageout2, ... }
+#
+
+fdb = dict()
+
+
+def fdb_add(vni, addr, ageout):
+    """
+    Add this <vni, addr> to the fdb.  Just updates the ageout if tuple is
+    already in the fdb
+    """
+
+    vni_dict = fdb.get(vni, dict())
+    vni_dict[addr] = ageout
+    fdb[vni] = vni_dict
+
+
+def fdb_addrs(vni):
+    vni_dict = fdb.get(vni, dict())
+    return vni_dict.keys()
+
+
+def fdb_ageout():
+    now = int(time.time())
+    for (vni, vni_dict) in fdb.items():
+        for (addr, ageout) in vni_dict.items():
+            if now > ageout:
+                del vni_dict[addr]
+        if not len(vni_dict):
+            del fdb[vni]
+
+
+def dump_fdb():
+    # This dumps the fdb as json formatted string.  The receiver of
+    # this can format as it likes.
+    import json
+
+    now = int(time.time())
+
+    adjusted = {}
+    for vni in sorted(fdb, key=fdb.get):
+        adjusted[vni] = {}
+        fwdlist = fdb[vni]
+        for addr in sorted(fwdlist, key=fwdlist.get):
+            holdtime = fwdlist[addr] - now
+            adjusted[vni][addr] = holdtime
+
+    return json.dumps(adjusted)
+
+
+def print_fdb(signum=None, frame=None):
+    # TODO A better job of formatting output
+    lgr.info("Forwarding Database:\n%s" % dump_fdb())
+
+
+########################################################################
+#
+# Miscellaneous
+#
+
+
+def add_ip_addr():
+    # TODO
+    pass
+
+
+def del_ip_addr():
+    # TODO
+    pass
+
+
+########################################################################
+#
+# Run Loop
+#
+
+
+def run():
+    PKT_BUFFER = 10000
+
+    global rsock
+    global tsock
+    global psock  # socket for vxflood protocol pkts
+
+    # Install anycast address on lo and associated cleanup on exit
+    if conf.install_addr:
+        if conf.address == '0.0.0.0':
+            raise RuntimError('Cannot install ANY addr on loopback IF')
+        add_ip_addr()
+        atexit.register(del_ip_addr)
+
+    # open the sockets
+    #
+    try:
+        rsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        rsock.settimeout(1)
+        rsock.bind((conf.address, conf.vxlan_port))
+        if not conf.no_replicate:
+            # Don't create this if not relicating.  Then I can run non-root
+            tsock = socket.socket(socket.AF_INET,
+                                  socket.SOCK_RAW,
+                                  socket.IPPROTO_RAW)
+        psock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        psock.settimeout(1)
+        psock.bind(("0.0.0.0", conf.vxfld_port))
+
+    except socket.error as e:
+        raise RuntimeError("opening receive and transmit sockets : " + str(e))
+
+    next_ageout = 0
+
+    while True:
+        now = int(time.time())
+        if now >= next_ageout:
+            fdb_ageout()
+            next_ageout = now + conf.age_check
+
+        readable = ()
+        writeable = ()
+        errored = ()
+        try:
+            # Nothing to do but wait for an event on a sock.  It's ok
+            # to delay ageout of fdb indefinitely
+            readable, writeable, errored = select.select([rsock, psock],
+                                                         [],
+                                                         [])
+        except select.error as e:
+            if e[0] != errno.EINTR:
+                raise
+
+        for s in readable:
+            try:
+                (buf, addr) = s.recvfrom(PKT_BUFFER)
+            except Exception as e:
+                # should never get an exception since sock is ready
+                lgr.debug("%s" % type(e))
+                raise RuntimeError(str(e))
+            if s is rsock:
+                handle_vxlan_packet(buf, addr)
+            elif s is psock:
+                handle_vxfld_msg(buf, addr)
+            else:
+                # Huh?
+                raise RuntimeError("Unknown sock in readable list")
+
+
+########################################################################
+#
+# Main
+#
+# Process cmd line args, do setup and then run
+#
+
+# Set up argparse with common args and then vxrd-specific ones
+prsr = vxfld.common.common_parser()
+prsr.add_argument('-s', '--servers',
+                  help='A list of servers, separated by spaces, to which '
+                       'registration information is forwarded.  May be '
+                       ' hostnames or IP addresses')
+
+# For debugging and running non-sudo.  Disables bind to raw socket
+prsr.add_argument('-R', '--no-replicate',
+                  action='store_true',
+                  help='Turn off replication')
+
+args = prsr.parse_args()
+
+conf, lgr = vxfld.common.initial_setup(args)
+
+# Now the initialization not common
+
+# Sig handler to dump the fdb
+# Could remove this when we have proper ctl program to query the daemon
+signal.signal(signal.SIGUSR1, print_fdb)
+
+# Start monitoring
+if conf.monitor:
+    vxfld.common.start_monit('vxsnd')
+
+try:
+    sys.exit(run())
+except KeyboardInterrupt:
+    sys.stderr.write("Warning: keyboard abort\n")
+    sys.exit(1)
+except RuntimeError as inst:
+    sys.stderr.write("ERROR: %s\n" % str(inst))
+    sys.exit(1)
