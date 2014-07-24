@@ -179,6 +179,8 @@ defaults = {
     'servers': '',
     'age_check': '90',  # frequency to age out stale fdb entries
     'vtep_membership': '',  # not yet implemented
+    'max_packet_size': '1500',
+    'receive_queue': '131072',
 
     #  .. and vxrd specific.
     'local_addr': '',  # Used if none configured on vxlan if
@@ -234,6 +236,8 @@ def init(args):
     config.bool_checker('install_addr')
     config.checker(servers)
     config.int_checker('age_check')
+    config.int_checker('max_packet_size')
+    config.int_checker('receive_queue')
 
     # vxrd
     config.addr_checker('local_addr')

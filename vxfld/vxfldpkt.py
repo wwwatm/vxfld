@@ -41,7 +41,7 @@ class PktError(Exception):
 
 
 class Refresh(dpkt.Packet):
-    """Packet sent between vxsrs entities to refresh the vvtuples."""
+    """Packet sent between vxsnd entities to refresh the vvtuples."""
 
     __hdr__ = (
         ('version', 'B', 0x01),  # version of the protocol Packet

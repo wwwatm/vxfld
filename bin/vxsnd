@@ -265,8 +265,6 @@ def del_ip_addr():
 
 
 def run():
-    PKT_BUFFER = 10000
-
     global rsock
     global tsock
     global psock  # socket for vxflood protocol pkts
@@ -282,10 +280,17 @@ def run():
     #
     try:
         rsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Set SO_RCVBUF
+        # NOTE(cfb): Setting SO_RCVBUF results in the size being 2x the bytes
+        #            passed to the setsockopt call. As such we pass it as
+        #            size/2.
+        rsock.setsockopt(socket.SOL_SOCKET,
+                         socket.SO_RCVBUF,
+                         conf.receive_queue/2)
         rsock.settimeout(1)
         rsock.bind((conf.address, conf.vxlan_port))
         if not conf.no_replicate:
-            # Don't create this if not relicating.  Then I can run non-root
+            # Don't create this if not replicating.  Then I can run non-root
             tsock = socket.socket(socket.AF_INET,
                                   socket.SOCK_RAW,
                                   socket.IPPROTO_RAW)
@@ -319,18 +324,17 @@ def run():
 
         for s in readable:
             try:
-                (buf, addr) = s.recvfrom(PKT_BUFFER)
+                (pkt, addr) = s.recvfrom(conf.max_packet_size)
             except Exception as e:
-                # should never get an exception since sock is ready
-                lgr.debug("%s" % type(e))
-                raise RuntimeError(str(e))
+                # Socket not ready, buffer overflow etc
+                lgr.error("%s" % type(e))
+                continue
             if s is rsock:
-                handle_vxlan_packet(buf, addr)
+                handle_vxlan_packet(pkt, addr)
             elif s is psock:
-                handle_vxfld_msg(buf, addr)
+                handle_vxfld_msg(pkt, addr)
             else:
-                # Huh?
-                raise RuntimeError("Unknown sock in readable list")
+                lgr.error("Unknown socket in readable list")
 
 
 ########################################################################
