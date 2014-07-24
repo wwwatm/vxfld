@@ -97,14 +97,15 @@ def handle_vxlan_packet(buf, addr):
         if dest == srcip:
             in_fdb = True
             continue
-        lgr.debug("Sending packet from %s to %s, vni %s" % (srcip,
-                                                            dest,
-                                                            v.vni))
+        if conf.debug:
+            lgr.debug("Sending packet from %s to %s, vni %s" % (srcip,
+                                                                dest,
+                                                                v.vni))
         relay_pkt(buf, dest, srcip, srcport)
 
     if not in_fdb:
         #  Add this <vni, srcip> to the fdb and tell peers about it
-        lgr.debug("Learning ip %s, vni %d from VXLAN pkt" % (srcip, v.vni))
+        lgr.info("Learning ip %s, vni %d from VXLAN pkt" % (srcip, v.vni))
         fdb_add(v.vni, srcip, int(time.time()) + conf.holdtime)
         pkt = vxfld.vxfldpkt.Refresh(holdtime=conf.holdtime, originator=False)
         pkt.add_vni_vteps({v.vni: [srcip]})
@@ -161,7 +162,7 @@ def handle_vxfld_msg(buf, addr):
         lgr.warn('Unexpected vxfld pkt of type %d' % pkt.type)
         return
 
-    lgr.debug('Refresh msg from %s: %s' % (srcip, str(pkt.vni_vteps)))
+    lgr.info('Refresh msg from %s: %s' % (srcip, str(pkt.vni_vteps)))
 
     ageout = int(time.time()) + pkt.holdtime
     for (vni, iplist) in pkt.vni_vteps.items():
@@ -356,6 +357,11 @@ prsr.add_argument('-R', '--no-replicate',
                   action='store_true',
                   help='Turn off replication')
 
+# Packet level debugging, makes packet processing take twice as long.
+prsr.add_argument('-D', '--debug',
+                  action='store_true',
+                  help='Turn on extra debug mode')
+
 args = prsr.parse_args()
 
 conf, lgr = vxfld.common.initial_setup(args)
@@ -371,6 +377,8 @@ if conf.monitor:
     vxfld.common.start_monit('vxsnd')
 
 try:
+    if config.debug:
+        config.set_param('loglevel', 'DEBUG')
     sys.exit(run())
 except KeyboardInterrupt:
     sys.stderr.write("Warning: keyboard abort\n")

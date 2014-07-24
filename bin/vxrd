@@ -37,7 +37,7 @@ def util_exec(cmd):
 
 
 def get_vxlan_config():
-    lgr.debug('Checking vxlan config')
+    lgr.info('Checking vxlan config')
 
     id_pat = re.compile('vxlan\s+id\s+(\d+)\s+')
     local_pat = re.compile('\s+local\s+(\d+\.\d+\.\d+.\d+)\s+')
@@ -48,7 +48,7 @@ def get_vxlan_config():
         m = id_pat.search(line)
         if m:
             # This line has a vxlan specification
-            # lgr.debug('Processing matching vxlan config line: %s' % line)
+            lgr.debug('Processing matching vxlan config line: %s' % line)
             vni = int(m.group(1))
             m = local_pat.search(line)
             if m:
