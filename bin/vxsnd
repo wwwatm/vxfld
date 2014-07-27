@@ -38,11 +38,11 @@ import select
 import dpkt
 import time
 import signal
-import atexit
 import errno
 import vxfld.common
 import vxfld.vxfldpkt
-
+import udp
+import ip
 
 ########################################################################
 #
@@ -83,25 +83,47 @@ class VXLAN(dpkt.Packet):
         self.flags = ((self.vni_r & 0x00ffffff) | (vni << 8))
 
 
-def handle_vxlan_packet(buf, addr):
+def handle_vxlan_packet(pkt, addr):
     """ The entry point from the sock receive. """
     (srcip, srcport) = addr
-    v = VXLAN(buf)
+    v = VXLAN(pkt)
 
     if not v.i:
         return
 
     fwd_list = fdb_addrs(v.vni)
     in_fdb = False
-    for dest in fwd_list:
-        if dest == srcip:
-            in_fdb = True
-            continue
-        if conf.debug:
-            lgr.debug("Sending packet from %s to %s, vni %s" % (srcip,
-                                                                dest,
-                                                                v.vni))
-        relay_pkt(buf, dest, srcip, srcport)
+    if fwd_list:
+        udp_packet = udp.Packet(sport=srcport,
+                                dport=conf.vxlan_port,
+                                data=pkt)
+        udp_packet = udp.assemble(udp_packet, cksum=False)
+
+        # Its quicker to do a string replace of the dstip for each VTEP
+        # rather then building an new packet each time. As such start
+        # with a non-sensical dstip.
+        ip_packet = ip.Packet(src=srcip,
+                              dst=srcip,
+                              ttl=64,
+                              p=socket.IPPROTO_UDP)
+        ip_packet.data = udp_packet
+        packet = ip.assemble(ip_packet, cksum=False)
+
+        for dstip in fwd_list:
+            if dstip == srcip:
+                in_fdb = True
+                continue
+            if conf.debug:
+                lgr.debug("Sending packet from %s to %s, vni %s" % (srcip,
+                                                                    dstip,
+                                                                    v.vni))
+            # Set the dstip in the packet directly to avoid re-packing the
+            # whole packet each time.
+            packet = packet[:16] + socket.inet_aton(dstip) + packet[20:]
+
+            if not conf.no_flood:
+                # Only have socket if flooding
+                tsock.sendto(packet, (dstip, 0))
 
     if not in_fdb:
         #  Add this <vni, srcip> to the fdb and tell peers about it
@@ -110,25 +132,6 @@ def handle_vxlan_packet(buf, addr):
         pkt = vxfld.vxfldpkt.Refresh(holdtime=conf.holdtime, originator=False)
         pkt.add_vni_vteps({v.vni: [srcip]})
         send_to_peers(pkt)
-
-
-def relay_pkt(pkt, dstip, srcip, srcport):
-    u = dpkt.udp.UDP(
-        dport=conf.vxlan_port,
-        sport=srcport,
-        data=pkt,
-    )
-    u.ulen = len(u)
-    i = dpkt.ip.IP(
-        dst=socket.inet_aton(dstip),
-        src=socket.inet_aton(srcip),
-        p=dpkt.ip.IP_PROTO_UDP,
-        data=u,
-    )
-    i.len = len(i)
-    if not conf.no_flood:
-        # Only have socket if flooding
-        tsock.sendto(str(i), (dstip, 0))
 
 
 def print_pkt(pkt):
@@ -377,8 +380,8 @@ if conf.monitor:
     vxfld.common.start_monit('vxsnd')
 
 try:
-    if config.debug:
-        config.set_param('loglevel', 'DEBUG')
+    if conf.debug:
+        conf.set_param('loglevel', 'DEBUG')
     sys.exit(run())
 except KeyboardInterrupt:
     sys.stderr.write("Warning: keyboard abort\n")
