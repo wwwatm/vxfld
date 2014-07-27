@@ -218,6 +218,8 @@ def fdb_ageout():
     for (vni, vni_dict) in fdb.items():
         for (addr, ageout) in vni_dict.items():
             if now > ageout:
+                if conf.debug:
+                    lgr.debug('Ageing out ip %s, vni %d' % (addr, vni))
                 del vni_dict[addr]
         if not len(vni_dict):
             del fdb[vni]
@@ -308,11 +310,6 @@ def run():
     next_ageout = 0
 
     while True:
-        now = int(time.time())
-        if now >= next_ageout:
-            fdb_ageout()
-            next_ageout = now + conf.age_check
-
         readable = ()
         writeable = ()
         errored = ()
@@ -325,6 +322,12 @@ def run():
         except select.error as e:
             if e[0] != errno.EINTR:
                 raise
+
+        # We just woke up so age out old entries
+        now = int(time.time())
+        if now >= next_ageout:
+            fdb_ageout()
+            next_ageout = now + conf.age_check
 
         for s in readable:
             try:
