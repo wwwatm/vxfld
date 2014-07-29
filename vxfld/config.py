@@ -181,6 +181,7 @@ defaults = {
     'vtep_membership': '',  # not yet implemented
     'max_packet_size': '1500',
     'receive_queue': '131072',
+    'enable_udp_chksum': 'true',
 
     #  .. and vxrd specific.
     'local_addr': '',  # Used if none configured on vxlan if
@@ -238,6 +239,7 @@ def init(args):
     config.int_checker('age_check')
     config.int_checker('max_packet_size')
     config.int_checker('receive_queue')
+    config.bool_checker('enable_udp_chksum')
 
     # vxrd
     config.addr_checker('local_addr')

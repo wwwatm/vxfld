@@ -97,7 +97,7 @@ def handle_vxlan_packet(pkt, addr):
         udp_packet = udp.Packet(sport=srcport,
                                 dport=conf.vxlan_port,
                                 data=pkt)
-        udp_packet = udp.assemble(udp_packet, cksum=False)
+        udp_packet = udp.assemble(udp_packet, cksum=conf.enable_udp_chksum)
 
         # Its quicker to do a string replace of the dstip for each VTEP
         # rather then building an new packet each time. As such start
@@ -107,6 +107,7 @@ def handle_vxlan_packet(pkt, addr):
                               ttl=64,
                               p=socket.IPPROTO_UDP)
         ip_packet.data = udp_packet
+        # Don't calculcate cksum since the hardware will do that for us.
         packet = ip.assemble(ip_packet, cksum=False)
 
         for dstip in fwd_list:
@@ -119,7 +120,12 @@ def handle_vxlan_packet(pkt, addr):
                                                                     v.vni))
             # Set the dstip in the packet directly to avoid re-packing the
             # whole packet each time.
-            packet = packet[:16] + socket.inet_aton(dstip) + packet[20:]
+            if dstip in aton_cache:
+                dst = aton_cache[dstip]
+            else:
+                dst = socket.inet_aton(dstip)
+                aton_cache[dstip] = dst
+            packet = packet[:16] + dst + packet[20:]
 
             if not conf.no_flood:
                 # Only have socket if flooding
@@ -193,8 +199,6 @@ def send_to_peers(pkt):
 # Data structure is a dict of dicts
 #    fdb[vni] = {addr1: ageout1, addr2: ageout2, ... }
 #
-
-fdb = dict()
 
 
 def fdb_add(vni, addr, ageout):
@@ -377,6 +381,10 @@ conf, lgr = vxfld.common.initial_setup(args)
 # Sig handler to dump the fdb
 # Could remove this when we have proper ctl program to query the daemon
 signal.signal(signal.SIGUSR1, print_fdb)
+
+# Setup some variables we need
+fdb = dict()
+aton_cache = dict()
 
 # Start monitoring
 if conf.monitor:
