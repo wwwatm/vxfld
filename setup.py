@@ -12,6 +12,7 @@ setup(
     install_requires=[
         'python-daemon',
         'dpkt',
+        'pyip',
     ],
 
     # metadata for upload to PyPI
