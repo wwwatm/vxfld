@@ -48,9 +48,10 @@ import ip
 #
 # Replicator packet handling
 #
+
+
 class VXLAN(dpkt.Packet):
     """
-
     VXLAN header parsing/editing.  Derived from DPKT and so dpkt module
     must be installed.
 
