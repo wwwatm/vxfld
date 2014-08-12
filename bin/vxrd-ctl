@@ -1,0 +1,59 @@
+#! /usr/bin/python
+
+#------------------------------------------------------------------------
+#
+#  Control program for managing vxrd
+#
+#------------------------------------------------------------------------
+
+import json
+from docopt import docopt
+from vxfld.mgmtserver import MgmtClient
+
+import pdb
+
+usage = '''
+Usage:
+    vxrd-ctl -h
+    vxrd-ctl [-u UDS_FILE] [-j] vxlans
+
+Options:
+    -u UDS_FILE  : File name for Unix domain socket
+                   [default: /var/run/vxfld.sock]
+    -j           : Print result as json string
+
+Commands:
+    vxlans: get the current set of vxlans the RD has reported to the snd
+    peers:  get the list of vtep peers reported back by the snd
+'''
+
+args = docopt(usage)
+
+try:
+    c = MgmtClient(args['-u'])
+    resp, err = c.sendobj(args)
+    if err:
+	print 'Error return: "%s"' % str(err)
+	exit(1)
+except Exception as e:
+    print 'Exception:', str(e)
+    exit(2)
+
+if args['-j']:
+    print json.dumps(resp)
+    exit()
+
+# Pretty print.
+
+if args['vxlans']:
+    # This was a vxlan request
+    fmt = '{:3}    {:^12}    {:^12}'
+    print fmt.format('VNI', 'Local Addr', 'Svc Node')
+    print fmt.format('===', '==========', '========')
+    if not len(resp):
+	print 'None'
+	exit(0)
+    for vni in sorted(resp.keys()):
+	print fmt.format(vni, resp[vni][0], resp[vni][1])
+    exit()
+

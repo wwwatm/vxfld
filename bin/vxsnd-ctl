@@ -1,0 +1,58 @@
+#! /usr/bin/python
+
+#------------------------------------------------------------------------
+#
+#  Control program for managing vxsnd
+#
+#------------------------------------------------------------------------
+
+import json
+from docopt import docopt
+from vxfld.mgmtserver import MgmtClient
+
+import pdb
+
+usage = '''
+Usage:
+    vxsnd-ctl -h
+    vxsnd-ctl [-u UDS_FILE] [-j] fdb
+
+Options:
+    -u UDS_FILE  : File name for Unix domain socket
+                   [default: /var/run/vxfld.sock]
+    -j           : Print result as json string
+
+Commands:
+    fdb: get the vxsnd forwarding DB
+'''
+
+args = docopt(usage)
+
+try:
+    c = MgmtClient(args['-u'])
+    resp, err = c.sendobj(args)
+    if err:
+	print 'Error return: "%s"' % str(err)
+	exit(1)
+except Exception as e:
+    print 'Exception:', str(e)
+    exit(2)
+
+if args['-j']:
+    print json.dumps(resp)
+    exit(0)
+
+# Pretty print
+if args['fdb']:
+    # This was a fdb request
+    fmt = '{:3}    {:^8}    {:6}'
+    print fmt.format('VNI', 'Address', 'Ageout')
+    print fmt.format('===', '=======', '======')
+    if not len(resp):
+	print 'Empty'
+	exit(0)
+    for vni in sorted(resp.keys()):
+	vni_out = vni
+	for ip in sorted(resp[vni].keys()):
+	    print fmt.format(vni_out, ip, resp[vni][ip])
+	    vni_out = ''

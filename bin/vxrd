@@ -23,11 +23,40 @@
 import subprocess
 import sys
 import socket
+import threading
 import re
 import time
 
 import vxfld.common
 import vxfld.vxfldpkt
+
+
+#------------------------------------------------------------------------
+#
+# Mgmt interface
+#
+from vxfld.mgmtserver import MgmtServer
+
+class VxrdMgmtServer(MgmtServer):
+    def process(self, msg):
+	# Returns result object and Exception.  Latter would be
+	# None if everything is good
+
+	# get global lock before doing anything
+	global_lock.acquire()
+
+	try:
+	    if msg['vxlans']:
+		ret = (vni_config, None)
+	    else:
+		ret = (None, RuntimeError('Unknown request'))
+	except:
+	    ret = (None, RuntimeError('Bad message'))
+
+	global_lock.release()
+	return ret
+
+# End Mgmt interface
 
 
 def util_exec(cmd):
@@ -138,6 +167,7 @@ def run():
     except socket.error as e:
         raise RuntimeError("opening transmit socket : " + str(e))
 
+    global vni_config
     vni_config = {}  # vni_config[vni] = [local_ip, sn_ip]
 
     next_refresh = 0
@@ -145,6 +175,23 @@ def run():
 
     def sleep_time():
         return max(0, min(next_refresh - now, next_config_check - now))
+
+    # Start the mgmt interface server
+
+    # Inclusion of this mgmt interface which runs in its own thread
+    # necessitates some concurrency control.  The solution (for now)
+    # is a global lock that a thread acquires before doing anything
+    # and releases when it goes into a wait state.
+
+    global global_lock
+    global_lock = threading.Lock()
+    # main thread starts off with the lock, releases it on going into
+    # wait.
+    global_lock.acquire()
+
+    mgmtserver = VxrdMgmtServer(conf.udsfile)
+    mgmtserver.start()
+
 
     while True:
         now = int(time.time())
@@ -164,7 +211,9 @@ def run():
             # TODO Need to add some jitter to next refresh time!
             next_refresh = now + conf.holdtime / conf.refresh_rate
 
+	global_lock.release()
         time.sleep(sleep_time())
+	global_lock.acquire()
 
 
 ########################################################################

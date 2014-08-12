@@ -151,6 +151,8 @@ def common_parser():
                       help='Run as a daemon program')
     prsr.add_argument('-p', '--pidfile',
                       help='File to write the process ID')
+    prsr.add_argument('-u', '--udsfile', \
+		      help='Unix domain socket for mgmt interface')
     prsr.add_argument('-l', '--logdest',
                       help='The destination for log records.  May be '
                            '"stdout", "syslog" or a file name')

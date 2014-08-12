@@ -15,6 +15,7 @@ Depends: ${misc:Depends},
  python (>= 2.7),
  python-dpkt,
  python-daemon,
+ python-docopt,
  python-pyip
 Description: VXLAN Flooding Service
 

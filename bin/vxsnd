@@ -23,6 +23,7 @@
 """
 Main Sections in the code.  Used to try keep some organization
 
+    Control Interface
     Replicator packet handling functions
     vxfld msg handling
     Forwarding Database, db management and query
@@ -35,6 +36,7 @@ Main Sections in the code.  Used to try keep some organization
 import sys
 import socket
 import select
+import threading
 import dpkt
 import time
 import signal
@@ -43,6 +45,33 @@ import vxfld.common
 import vxfld.vxfldpkt
 import udp
 import ip
+
+########################################################################
+#
+# Management interface
+#
+from vxfld.mgmtserver import MgmtServer
+
+class VxsndMgmtServer(MgmtServer):
+    def process(self, msg):
+	# Returns result object and Exception.  Latter would be
+	# None if everything is good
+
+	# get global lock before doing anything
+	global_lock.acquire()
+
+	try:
+	    if msg['fdb']:
+		ret = (fdb, None)
+	    else:
+		ret = (None, RuntimeError('Unknown request'))
+	except:
+	    ret = (None, RuntimeError('Bad message'))
+
+	global_lock.release()
+	return ret
+
+
 
 ########################################################################
 #
@@ -287,6 +316,22 @@ def run():
         add_ip_addr()
         atexit.register(del_ip_addr)
 
+    # Start the mgmt server
+
+    # Inclusion of this mgmt interface which runs in its own thread
+    # necessitates some concurrency control.  The solution (for now)
+    # is a global lock that a thread acquires before doing anything
+    # and releases when it goes into a wait state.
+
+    global global_lock
+    global_lock = threading.Lock()
+    # main thread starts off with the lock, releases it on going into
+    # wait.
+    global_lock.acquire()
+
+    mgmtserver = VxsndMgmtServer(conf.udsfile)
+    mgmtserver.start()
+
     # open the sockets
     #
     try:
@@ -315,6 +360,7 @@ def run():
     next_ageout = 0
 
     while True:
+	global_lock.release()
         readable = ()
         writeable = ()
         errored = ()
@@ -327,6 +373,7 @@ def run():
         except select.error as e:
             if e[0] != errno.EINTR:
                 raise
+	global_lock.acquire()
 
         # We just woke up so age out old entries
         now = int(time.time())
