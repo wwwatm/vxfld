@@ -16,6 +16,7 @@ usage = '''
 Usage:
     vxrd-ctl -h
     vxrd-ctl [-u UDS_FILE] [-j] vxlans
+    vxrd-ctl [-u UDS_FILE] [-j] peers
 
 Options:
     -u UDS_FILE  : File name for Unix domain socket
@@ -55,5 +56,16 @@ if args['vxlans']:
 	exit(0)
     for vni in sorted(resp.keys()):
 	print fmt.format(vni, resp[vni][0], resp[vni][1])
+    exit()
+
+if args['peers']:
+    fmt = '{:3}    {}'
+    print fmt.format('VNI', 'Peer Addrs')
+    print fmt.format('===', '==========')
+    if not len(resp):
+	print 'None'
+	exit(0)
+    for vni in sorted(resp.keys()):
+	print fmt.format(vni, ', '.join(sorted(resp[vni])))
     exit()
 

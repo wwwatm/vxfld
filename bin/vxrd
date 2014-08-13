@@ -48,6 +48,8 @@ class VxrdMgmtServer(MgmtServer):
 	try:
 	    if msg['vxlans']:
 		ret = (vni_config, None)
+	    elif msg['peers']:
+		ret = (peerdb, None)
 	    else:
 		ret = (None, RuntimeError('Unknown request'))
 	except:
@@ -153,6 +155,88 @@ def send_refresh(vni_data):
         sock.sendto(str(rp), (sn, conf.vxfld_port))
 
 
+#------------------------------------------------------------------------
+#
+# Functions for receiving refresh msgs and setting self-replication
+#
+
+def handle_vxfld_msg(buf, addr):
+    global peerdb
+
+    (srcip, srcport) = addr
+
+    pkt = vxfld.vxfldpkt.Refresh(buf)
+    if pkt.type != vxfld.vxfldpkt.MsgType.refresh:
+	lgr.warn('Unexpected vxfld pkt of type %d' % pkt.type)
+	return
+
+    lgr.debug('Refresh msg from %s: %s' % (srcip, str(pkt.vni_vteps)))
+
+    for (vni, iplist) in pkt.vni_vteps.items():
+	# Check that vni is one of mine.  Should be if vxsnd is
+	# behaving correctly
+	if vni not in vni_config:
+	    lgr.debug("Unexpected VNI %d in msg from %s" % \
+		      (vni, srcip))
+	    continue
+
+	# Update the vxlan IF but only if there is a change
+	if conf.selfrep and iplist != peerdb.get(vni, list()):
+	    update_vtep_peers(vni, iplist)
+
+    # This is now our current peer list
+    peerdb = pkt.vni_vteps
+
+
+def update_vtep_peers(vni, addrs):
+    # This is specific to CumulusLinux.
+    #
+    # This function need to be in an external module so it can easily
+    # be replaced with a system-specific implimentation
+
+    my_addr = vni_config[vni][0]
+    addrs = list(addrs)			# make a copy before modifying
+    try:
+	addrs.remove(my_addr)
+    except:
+	lgr.debug('Peerlist for vni %d does not contain my address' % vni)
+
+    lgr.debug('Updating peer list for VNI %d with %s' % (vni, addrs))
+
+    # Map the VNI to interface name
+    try:
+	out = subprocess.check_output('ip -d -o link show'.split(),
+				      stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+	lgr.warning(str(e))
+
+    pat = re.compile('\S+:\s+(\S+):\s+.+\s+vxlan\s+id\s+(\d+)\s+.*')
+    name = None
+    for line in out.splitlines():
+	m = pat.search(line)
+	if m and vni == int(m.group(2)):
+	    name = m.group(1)
+	    break
+
+    if name == None:
+	lgr.warning('Got peerlist for non-member VNI %d' % vni)
+	return
+    cmd = 'ip link set %s type vxlan' % name
+    for addr in addrs:
+	cmd += ' peernode %s' % addr
+
+    try:
+	subprocess.check_output(cmd.split(), stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+	lgr.warning('Failed to update vxlan peers: %s' % str(e))
+
+
+
+
+ ########################################################################
+ #
+ # The run function
+
 def run():
     """
     Periodically sends the registration method to the svcnode address.
@@ -169,6 +253,9 @@ def run():
 
     global vni_config
     vni_config = {}  # vni_config[vni] = [local_ip, sn_ip]
+
+    global peerdb
+    peerdb = {}			# peerdb[vni] = (ip, ...)
 
     next_refresh = 0
     next_config_check = 0
@@ -212,8 +299,17 @@ def run():
             next_refresh = now + conf.holdtime / conf.refresh_rate
 
 	global_lock.release()
-        time.sleep(sleep_time())
-	global_lock.acquire()
+	# Wait till we have to do something or a pkt arrives on the
+	# sock
+	try:
+	    sock.settimeout(sleep_time())
+	    (buf, addr) = sock.recvfrom(65536)
+	except socket.timeout:
+	    continue
+	finally:
+	    global_lock.acquire()
+
+	handle_vxfld_msg(buf, addr)
 
 
 ########################################################################

@@ -188,7 +188,8 @@ defaults = {
     'local_addr': '',  # Used if none configured on vxlan if
     'svcnode': '',  # Used if none configured on vxlan if
     'refresh_rate': '3',  # how often to refresh within holdtime
-    'config_check_rate': 30  # secs between checking for config changes
+    'config_check_rate' : 30, # secs between checking for config changes
+    'selfrep' : 'false',
 }
 
 
@@ -247,6 +248,7 @@ def init(args):
     config.addr_checker('svcnode')
     config.int_checker('refresh_rate')
     config.int_checker('config_check_rate')
+    config.bool_checker('selfrep')
 
     # Load the defaults
     for (p, v) in defaults.items():

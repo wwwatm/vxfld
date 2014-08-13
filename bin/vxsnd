@@ -204,15 +204,22 @@ def handle_vxfld_msg(buf, addr):
     lgr.info('Refresh msg from %s: %s' % (srcip, str(pkt.vni_vteps)))
 
     ageout = int(time.time()) + pkt.holdtime
+    response = vxfld.vxfldpkt.Refresh(holdtime=pkt.holdtime, originator=False)
     for (vni, iplist) in pkt.vni_vteps.items():
         for ip in iplist:
             fdb_add(vni, ip, ageout)
+	response.vni_vteps[vni] = fdb_addrs(vni)
 
     if pkt.originator:
         # Send on to all peers but set originator to 0 so that they do
         # not forward on
         pkt.originator = 0
         send_to_peers(pkt)
+
+	# Send to originator the vtep membership for each of its VNIs
+	psock.sendto(str(response), addr)
+
+# End handle_vxfld_msg()
 
 
 def send_to_peers(pkt):
