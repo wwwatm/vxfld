@@ -62,7 +62,7 @@ class VxsndMgmtServer(MgmtServer):
 
 	try:
 	    if msg['fdb']:
-		ret = (fdb, None)
+		ret = (fdb_rel_holdtime(), None)
 	    else:
 		ret = (None, RuntimeError('Unknown request'))
 	except:
@@ -169,6 +169,8 @@ def handle_vxlan_packet(pkt, addr):
         pkt.add_vni_vteps({v.vni: [srcip]})
         send_to_peers(pkt)
 
+# End handle_vxfld_msg()
+
 
 def print_pkt(pkt):
     """ Simple print of packet.  Useful for debugging. """
@@ -266,10 +268,9 @@ def fdb_ageout():
             del fdb[vni]
 
 
-def dump_fdb():
-    # This dumps the fdb as json formatted string.  The receiver of
-    # this can format as it likes.
-    import json
+def fdb_rel_holdtime():
+    # This returns a copy of the fdb with the hold times adjusted to
+    # be relative rather than absolute.  Used for display purposes
 
     now = int(time.time())
 
@@ -280,13 +281,14 @@ def dump_fdb():
         for addr in sorted(fwdlist, key=fwdlist.get):
             holdtime = fwdlist[addr] - now
             adjusted[vni][addr] = holdtime
-
-    return json.dumps(adjusted)
+    return adjusted
 
 
 def print_fdb(signum=None, frame=None):
     # TODO A better job of formatting output
-    lgr.info("Forwarding Database:\n%s" % dump_fdb())
+    import json
+    s= json.dumps(fdb_rel_holdtime())
+    lgr.info("Forwarding Database:\n%s" % s)
 
 
 ########################################################################
@@ -411,7 +413,7 @@ def run():
 #
 
 # Set up argparse with common args and then vxrd-specific ones
-prsr = vxfld.common.common_parser()
+prsr = vxfld.common.common_parser('vxsnd')
 prsr.add_argument('-s', '--servers',
                   help='A list of servers, separated by spaces, to which '
                        'registration information is forwarded.  May be '
@@ -440,10 +442,6 @@ signal.signal(signal.SIGUSR1, print_fdb)
 # Setup some variables we need
 fdb = dict()
 aton_cache = dict()
-
-# Start monitoring
-if conf.monitor:
-    vxfld.common.start_monit('vxsnd')
 
 try:
     if conf.debug:

@@ -16,11 +16,12 @@ build:
 
 
 %:
-	dh $@ 
+	dh $@
 
 override_dh_installinit:
-	dh_installinit --name=vxsnd  --no-start
-	dh_installinit --name=vxrd  --no-start
+	dh_installinit --name=vxsnd
+	dh_installinit --name=vxrd
+
 
 override_dh_pysupport:
 

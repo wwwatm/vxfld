@@ -1,0 +1,7 @@
+# Monit control file service Entry Statements for vxrd
+#
+
+check process vxrd with pidfile /var/run/vxrd.pid
+        start program = "/etc/init.d/vxrd start"
+        stop program = "/etc/init.d/vxrd stop"
+

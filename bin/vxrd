@@ -67,6 +67,11 @@ def util_exec(cmd):
     return out.split('\n')
 
 
+#------------------------------------------------------------------------
+#
+# Functions for getting vxlan config and sending refresh msgs
+#
+
 def get_vxlan_config():
     lgr.info('Checking vxlan config')
 
@@ -311,6 +316,8 @@ def run():
 
 	handle_vxfld_msg(buf, addr)
 
+# End run()
+
 
 ########################################################################
 #
@@ -320,7 +327,7 @@ def run():
 #
 
 # Set up argparse with common args and then vxrd-specific ones
-prsr = vxfld.common.common_parser()
+prsr = vxfld.common.common_parser('vxrd')
 prsr.add_argument('-s', '--svcnode',
                   help='The address of the service node to send registration '
                        'messages to.  It is used for those VXLANs that do '
@@ -340,11 +347,6 @@ prsr.add_argument('-F', '--fakevtep',
 args = prsr.parse_args()
 
 conf, lgr = vxfld.common.initial_setup(args)
-
-# Now the initialization not common
-# Start monitoring
-if conf.monitor:
-    vxfld.common.start_monit('vxrd')
 
 try:
     sys.exit(run())

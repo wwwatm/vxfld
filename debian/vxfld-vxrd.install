@@ -1,0 +1,4 @@
+bin/vxrd		usr/bin
+bin/vxrd-ctl		usr/bin
+vxrd.conf		etc/
+debian/vxrd-monit.rc	etc/monit/monitrc.d/

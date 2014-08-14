@@ -19,7 +19,7 @@ Usage:
 
 Options:
     -u UDS_FILE  : File name for Unix domain socket
-                   [default: /var/run/vxfld.sock]
+                   [default: /var/run/vxsnd.sock]
     -j           : Print result as json string
 
 Commands:

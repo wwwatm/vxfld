@@ -32,24 +32,6 @@ import logging.handlers
 import vxfld.config
 
 
-def run_cmd(cmd, verbose=False):
-    """
-    Runs a command with Popen gathering output & status. Takes a str arg.
-    Should take a list too
-    """
-
-    cmd_list = cmd.split()
-    try:
-        proc = subprocess.Popen(cmd_list, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                shell=False)
-        stdout, stderr = proc.communicate()
-        proc.wait()
-    except Exception as e:
-        raise RuntimeError('Failed to run shell cmd %s: %s' % (cmd, str(e)))
-    return (stdout, stderr, proc.returncode)
-
-
 def logger_setup(conf):
     """ Setup logging. """
     global lgr
@@ -125,33 +107,25 @@ def delpid():
         lgr.critical("Unable to remove pid file on exit: %s" % str(e))
 
 
-def start_monit(service):
-    # On failure just log.  Don't pass exception up
-    try:
-        (out, err, errno) = run_cmd('monit monitor %s 2>/dev/null' % service)
-        if errno:
-            raise RuntimeError('monit error %d', errno)
-    except:
-        lgr.warning('Failed to initialize monitoring with monit')
-
-
 def term_handler(signum, frame):
     sys.exit(0)
 
 
-def common_parser():
+def common_parser(dname):
     """ Argparser for common cmd line args. """
 
     prsr = argparse.ArgumentParser()
     prsr.add_argument('-c', '--config-file',
-                      default='/etc/vxfld.conf',
+		      default='/etc/%s.conf' % dname,
                       help='The config file to read in at startup')
     prsr.add_argument('-d', '--daemon',
                       action='store_true',
                       help='Run as a daemon program')
     prsr.add_argument('-p', '--pidfile',
+		      default='/var/run/%s.pid' % dname,
                       help='File to write the process ID')
-    prsr.add_argument('-u', '--udsfile', \
+    prsr.add_argument('-u', '--udsfile',
+		      default='/var/run/%s.sock' % dname,
 		      help='Unix domain socket for mgmt interface')
     prsr.add_argument('-l', '--logdest',
                       help='The destination for log records.  May be '

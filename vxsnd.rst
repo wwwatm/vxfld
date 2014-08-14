@@ -30,7 +30,7 @@ messages from a daemon running on the VTEPS (see ``vxrd(8)``)
 
 vxsnd also adds to the forwarding list any VTEP it learns of from
 received VXLAN data packets.  This makes the system more responsive to
-configuration changes i the event the registration daemon is slow to
+configuration changes in the event the registration daemon is slow to
 respond.
 
 vxsnd runs on any node in the network that has IP reachability to the
@@ -65,7 +65,7 @@ OPTIONS
 =======
 
 -c, \--config FILE
-  The config file to load.  Default is /etc/vxfld.conf
+  The config file to load.  Default is /etc/vxsnd.conf
 
 -d, --daemon
   Run as a daemon program
@@ -92,7 +92,7 @@ Configuration
 All the options above and additional configuration options can be
 speficied in a configuration file, read at startup.  All the
 configuration options and their defaults are specified in the default
-config file */etc/vxfld.conf*.  Options specified on the command line
+config file */etc/vxsnd.conf*.  Options specified on the command line
 take precedence over options specified in the config file.
 
 

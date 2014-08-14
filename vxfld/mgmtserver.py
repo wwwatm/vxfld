@@ -36,7 +36,11 @@ class MgmtServer(socket.socket):
                 raise
 
         socket.socket.__init__(self, socket.AF_UNIX, socket.SOCK_STREAM)
-        self.bind(uds_file)
+	try:
+	    self.bind(uds_file)
+	except Exception as e:
+	    raise RuntimeError('Unable to bind to mgmt socket %s: %s' % \
+			       (uds_file, str(e)))
         self.listen(5)
         self.epoll = select.epoll()
         self.epoll.register(self.fileno(), select.EPOLLIN)

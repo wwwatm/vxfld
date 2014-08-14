@@ -1,0 +1,4 @@
+bin/vxsnd		usr/bin
+bin/vxsnd-ctl		usr/bin
+vxsnd.conf		etc/
+debian/vxsnd-monit.rc	etc/monit/monitrc.d/

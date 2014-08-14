@@ -1,7 +1,0 @@
-bin/vxsnd               usr/bin
-bin/vxrd                usr/bin
-bin/vxsnd-ctl           usr/bin
-bin/vxrd-ctl            usr/bin
-vxfld.conf              etc/
-vxfld/*                 usr/lib/python2.7/dist-packages/vxfld/
-debian/vxfld-monit.rc   etc/monit/monitrc.d/

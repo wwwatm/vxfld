@@ -1,0 +1,7 @@
+# Monit control file service Entry Statements for vxsnd
+#
+
+check process vxsnd with pidfile /var/run/vxsnd.pid
+        start program = "/etc/init.d/vxsnd start"
+        stop program = "/etc/init.d/vxsnd stop"
+
