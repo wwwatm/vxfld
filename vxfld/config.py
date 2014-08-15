@@ -187,7 +187,7 @@ defaults = {
     'local_addr': '',  # Used if none configured on vxlan if
     'svcnode': '',  # Used if none configured on vxlan if
     'refresh_rate': '3',  # how often to refresh within holdtime
-    'config_check_rate' : 30, # secs between checking for config changes
+    'config_check_rate' : 10, # secs between checking for config changes
     'selfrep' : 'false',
 }
 

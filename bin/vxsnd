@@ -209,7 +209,11 @@ def handle_vxfld_msg(buf, addr):
     response = vxfld.vxfldpkt.Refresh(holdtime=pkt.holdtime, originator=False)
     for (vni, iplist) in pkt.vni_vteps.items():
         for ip in iplist:
-            fdb_add(vni, ip, ageout)
+	    if pkt.holdtime:
+		fdb_add(vni, ip, ageout)
+	    else:
+		# holdtime is 0 so delete from fdb
+		fdb_del(vni, ip)
 	response.vni_vteps[vni] = fdb_addrs(vni)
 
     if pkt.originator:
@@ -249,6 +253,19 @@ def fdb_add(vni, addr, ageout):
     vni_dict = fdb.get(vni, dict())
     vni_dict[addr] = ageout
     fdb[vni] = vni_dict
+
+
+def fdb_del(vni, addr):
+    # del the <vni, add> from the fdb
+
+    if vni in fdb:
+	try:
+	    del fdb[vni][addr]
+	except:
+	    pass
+	if not len(fdb[vni]):
+	    del fdb[vni]
+
 
 
 def fdb_addrs(vni):
@@ -375,10 +392,12 @@ def run():
         errored = ()
         try:
             # Nothing to do but wait for an event on a sock.  It's ok
-            # to delay ageout of fdb indefinitely
+	    # to delay ageout of fdb indefinitely.  But for
+	    # robustness and cleanliness, timeout after age_chack time
             readable, writeable, errored = select.select([rsock, psock],
                                                          [],
-                                                         [])
+                                                         [],
+							 conf.age_check)
         except select.error as e:
             if e[0] != errno.EINTR:
                 raise
