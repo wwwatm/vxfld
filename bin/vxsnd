@@ -41,6 +41,7 @@ import dpkt
 import time
 import signal
 import errno
+import traceback
 import vxfld.common
 import vxfld.vxfldpkt
 import udp
@@ -466,9 +467,14 @@ try:
     if conf.debug:
         conf.set_param('loglevel', 'DEBUG')
     sys.exit(run())
-except KeyboardInterrupt:
-    sys.stderr.write("Warning: keyboard abort\n")
-    sys.exit(1)
+except SystemExit:
+    pass
 except RuntimeError as inst:
-    sys.stderr.write("ERROR: %s\n" % str(inst))
+    lgr.info("ERROR: %s\n" % str(inst))
     sys.exit(1)
+except:
+    lgr.info(traceback.format_exc())
+    sys.exit(1)
+
+sys.exit(0)
+

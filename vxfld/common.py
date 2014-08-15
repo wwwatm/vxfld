@@ -108,6 +108,7 @@ def delpid():
 
 
 def term_handler(signum, frame):
+    lgr.debug('Caught signal %d' % signum)
     sys.exit(0)
 
 
