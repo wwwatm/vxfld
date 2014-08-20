@@ -13,6 +13,7 @@ setup(
         'python-daemon',
         'dpkt',
         'pyip',
+        'docopt',
     ],
 
     # metadata for upload to PyPI
