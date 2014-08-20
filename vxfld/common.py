@@ -117,17 +117,17 @@ def common_parser(dname):
 
     prsr = argparse.ArgumentParser()
     prsr.add_argument('-c', '--config-file',
-		      default='/etc/%s.conf' % dname,
+                      default='/etc/%s.conf' % dname,
                       help='The config file to read in at startup')
     prsr.add_argument('-d', '--daemon',
                       action='store_true',
                       help='Run as a daemon program')
     prsr.add_argument('-p', '--pidfile',
-		      default='/var/run/%s.pid' % dname,
+                      default='/var/run/%s.pid' % dname,
                       help='File to write the process ID')
     prsr.add_argument('-u', '--udsfile',
-		      default='/var/run/%s.sock' % dname,
-		      help='Unix domain socket for mgmt interface')
+                      default='/var/run/%s.sock' % dname,
+                      help='Unix domain socket for mgmt interface')
     prsr.add_argument('-l', '--logdest',
                       help='The destination for log records.  May be '
                            '"stdout", "syslog" or a file name')

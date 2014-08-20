@@ -1,17 +1,16 @@
 #!/usr/bin/env python
 
-#-------------------------------------------------------------------------------
-#
-#  Client and Server for Management 
-#
+"""
+Client and Server for Management
 
-#  A utility uses the client class to send a message to the daemon
-#  with a request.  The daemon runs the server object in a thread and
-#  responds to these requests.  The response is two objects: the valid
-#  response if no error and an exception object if there is an error.
-#  One of the two should be None.
+A utility uses the client class to send a message to the daemon
+with a request.  The daemon runs the server object in a thread and
+responds to these requests.  The response is two objects: the valid
+response if no error and an exception object if there is an error.
+One of the two should be None.
 
-# See the test code for typical usage.
+See the test code for typical usage.
+"""
 
 
 import socket
@@ -22,6 +21,7 @@ import os
 import threading
 
 import pdb
+
 
 class MgmtServer(socket.socket):
 
@@ -36,22 +36,20 @@ class MgmtServer(socket.socket):
                 raise
 
         socket.socket.__init__(self, socket.AF_UNIX, socket.SOCK_STREAM)
-	try:
-	    self.bind(uds_file)
-	except Exception as e:
-	    raise RuntimeError('Unable to bind to mgmt socket %s: %s' % \
-			       (uds_file, str(e)))
+        try:
+            self.bind(uds_file)
+        except Exception as e:
+            raise RuntimeError('Unable to bind to mgmt socket %s: %s'
+                               % (uds_file, str(e)))
         self.listen(5)
         self.epoll = select.epoll()
         self.epoll.register(self.fileno(), select.EPOLLIN)
-
 
     def client_close(self, fileno):
 
         self.epoll.unregister(fileno)
         self.clients[fileno].close()
         del self.clients[fileno]
-
 
     def run(self):
 
@@ -84,36 +82,34 @@ class MgmtServer(socket.socket):
                     except socket.error as e:
                         self.client_close(fileno)
 
-
     def process(self, msg):
-	# Returns a response object and an Exception object.  The
-	# latter is None if no exception
+        # Returns a response object and an Exception object.  The
+        # latter is None if no exception
 
-	# Over-ride this method in the derived class
+        # Over-ride this method in the derived class
         print 'Base class:', msg
-	return None, None
-
+        return None, None
 
     def start(self):
-	thread = threading.Thread(target=self.run)
-	thread.setDaemon(True)
-	thread.start()
+        thread = threading.Thread(target=self.run)
+        thread.setDaemon(True)
+        thread.start()
 
 
 class MgmtClient(socket.socket):
 
     def __init__(self, uds_file):
-	try:
+        try:
             socket.socket.__init__(self, socket.AF_UNIX, socket.SOCK_STREAM)
             self.connect(uds_file)
 
         except socket.error, (errno, string):
             msg = "Unable to connect to daemon on socket %s [%d]: %s" % \
-		      (uds_file, errno, string)
-	    raise RuntimeError(msg)
+                  (uds_file, errno, string)
+            raise RuntimeError(msg)
 
     def sendobj(self, msgobj):
-	msg = pickle.dumps(msgobj, pickle.HIGHEST_PROTOCOL)
+        msg = pickle.dumps(msgobj, pickle.HIGHEST_PROTOCOL)
 
         self.sendall(msg)
 
@@ -146,33 +142,32 @@ This will test the Mgmtserver by instantiating a echo server or client
 '''
 
     class EchoMgmtServer(MgmtServer):
-	def process(self, msg):
-	    print 'Received msg:', msg
-	    return 'Thanks for the msg of len %d' % len(msg), None
+        def process(self, msg):
+            print 'Received msg:', msg
+            return 'Thanks for the msg of len %d' % len(msg), None
 
     args = docopt(usage)
 
     if args['-s']:
-	try:
-	    s = EchoMgmtServer(args['-f'])
-	    s.run()
-	except KeyboardInterrupt:
-	    exit()
+        try:
+            s = EchoMgmtServer(args['-f'])
+            s.run()
+        except KeyboardInterrupt:
+            exit()
 
     if args['-c']:
-	c = MgmtClient(args['-f'])
-	for msg in ('Here is first message',
-		    'Here is second',
-		    'And third',
-		    ):
-	    print 'Sending "%s"' % msg
-	    resp = c.sendobj(msg)
-	    print 'Response: "%s"' % resp
+        c = MgmtClient(args['-f'])
+        for msg in ('Here is first message',
+                    'Here is second',
+                    'And third',
+                    ):
+            print 'Sending "%s"' % msg
+            resp = c.sendobj(msg)
+            print 'Response: "%s"' % resp
 
-	msg = {'key1': 1, 'key2': 2, 'key3': 3}
-	print 'Sending "%s"' % msg
-	resp, err = c.sendobj(msg)
-	if err:
-	    print 'Received error %s' % str(err)
-	print 'Response: "%s"' % resp
-
+        msg = {'key1': 1, 'key2': 2, 'key3': 3}
+        print 'Sending "%s"' % msg
+        resp, err = c.sendobj(msg)
+        if err:
+            print 'Received error %s' % str(err)
+        print 'Response: "%s"' % resp

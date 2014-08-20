@@ -1,10 +1,10 @@
 #! /usr/bin/python
 
-#------------------------------------------------------------------------
+#########################################################################
 #
 #  Control program for managing vxrd
 #
-#------------------------------------------------------------------------
+#########################################################################
 
 import json
 from docopt import docopt
@@ -34,8 +34,8 @@ try:
     c = MgmtClient(args['-u'])
     resp, err = c.sendobj(args)
     if err:
-	print 'Error return: "%s"' % str(err)
-	exit(1)
+        print 'Error return: "%s"' % str(err)
+        exit(1)
 except Exception as e:
     print 'Exception:', str(e)
     exit(2)
@@ -52,10 +52,10 @@ if args['vxlans']:
     print fmt.format('VNI', 'Local Addr', 'Svc Node')
     print fmt.format('===', '==========', '========')
     if not len(resp):
-	print 'None'
-	exit(0)
+        print 'None'
+        exit(0)
     for vni in sorted(resp.keys()):
-	print fmt.format(vni, resp[vni][0], resp[vni][1])
+        print fmt.format(vni, resp[vni][0], resp[vni][1])
     exit()
 
 if args['peers']:
@@ -63,9 +63,8 @@ if args['peers']:
     print fmt.format('VNI', 'Peer Addrs')
     print fmt.format('===', '==========')
     if not len(resp):
-	print 'None'
-	exit(0)
+        print 'None'
+        exit(0)
     for vni in sorted(resp.keys()):
-	print fmt.format(vni, ', '.join(sorted(resp[vni])))
+        print fmt.format(vni, ', '.join(sorted(resp[vni])))
     exit()
-

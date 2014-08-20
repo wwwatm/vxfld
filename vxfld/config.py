@@ -165,8 +165,8 @@ defaults = {
     'protocol_version': '0.1',  # a constant
     'loglevel': 'INFO',
     'logdest': 'syslog',
-    'pidfile': '',			# default is in agrparse
-    'udsfile' : '',			# ditto
+    'pidfile': '',      # default is in agrparse
+    'udsfile': '',      # ditto
     'vxlan_port': '4789',  # port for vxlan tunnel pkts
     'vxfld_port': '10001',  # port for vxfld messages
     'holdtime': '90',  # how long to hold soft state
@@ -187,8 +187,8 @@ defaults = {
     'local_addr': '',  # Used if none configured on vxlan if
     'svcnode': '',  # Used if none configured on vxlan if
     'refresh_rate': '3',  # how often to refresh within holdtime
-    'config_check_rate' : 10, # secs between checking for config changes
-    'selfrep' : 'false',
+    'config_check_rate': 10,    # secs between checking for config changes
+    'selfrep': 'false',
 }
 
 

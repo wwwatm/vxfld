@@ -1,10 +1,10 @@
 #! /usr/bin/python
 
-#------------------------------------------------------------------------
+########################################################################
 #
 #  Control program for managing vxsnd
 #
-#------------------------------------------------------------------------
+########################################################################
 
 import json
 from docopt import docopt
@@ -32,8 +32,8 @@ try:
     c = MgmtClient(args['-u'])
     resp, err = c.sendobj(args)
     if err:
-	print 'Error return: "%s"' % str(err)
-	exit(1)
+        print 'Error return: "%s"' % str(err)
+        exit(1)
 except Exception as e:
     print 'Exception:', str(e)
     exit(2)
@@ -49,10 +49,10 @@ if args['fdb']:
     print fmt.format('VNI', 'Address', 'Ageout')
     print fmt.format('===', '=======', '======')
     if not len(resp):
-	print 'Empty'
-	exit(0)
+        print 'Empty'
+        exit(0)
     for vni in sorted(resp.keys()):
-	vni_out = vni
-	for ip in sorted(resp[vni].keys()):
-	    print fmt.format(vni_out, ip, resp[vni][ip])
-	    vni_out = ''
+        vni_out = vni
+        for ip in sorted(resp[vni].keys()):
+            print fmt.format(vni_out, ip, resp[vni][ip])
+            vni_out = ''

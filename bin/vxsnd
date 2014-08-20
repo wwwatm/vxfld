@@ -53,32 +53,31 @@ import ip
 #
 from vxfld.mgmtserver import MgmtServer
 
+
 class VxsndMgmtServer(MgmtServer):
     def process(self, msg):
-	# Returns result object and Exception.  Latter would be
-	# None if everything is good
+        # Returns result object and Exception.  Latter would be
+        # None if everything is good
 
-	# get global lock before doing anything
-	global_lock.acquire()
+        # get global lock before doing anything
+        global_lock.acquire()
 
-	try:
-	    if msg['fdb']:
-		ret = (fdb_rel_holdtime(), None)
-	    else:
-		ret = (None, RuntimeError('Unknown request'))
-	except:
-	    ret = (None, RuntimeError('Bad message'))
+        try:
+            if msg['fdb']:
+                ret = (fdb_rel_holdtime(), None)
+            else:
+                ret = (None, RuntimeError('Unknown request'))
+        except:
+            ret = (None, RuntimeError('Bad message'))
 
-	global_lock.release()
-	return ret
-
+        global_lock.release()
+        return ret
 
 
 ########################################################################
 #
 # Replicator packet handling
 #
-
 
 class VXLAN(dpkt.Packet):
     """
@@ -138,7 +137,7 @@ def handle_vxlan_packet(pkt, addr):
                               ttl=64,
                               p=socket.IPPROTO_UDP)
         ip_packet.data = udp_packet
-        # Don't calculcate cksum since the hardware will do that for us.
+        # Don't calculcate cksum since the hardware/stack will do that for us.
         packet = ip.assemble(ip_packet, cksum=False)
 
         for dstip in fwd_list:
@@ -170,8 +169,6 @@ def handle_vxlan_packet(pkt, addr):
         pkt.add_vni_vteps({v.vni: [srcip]})
         send_to_peers(pkt)
 
-# End handle_vxfld_msg()
-
 
 def print_pkt(pkt):
     """ Simple print of packet.  Useful for debugging. """
@@ -189,6 +186,7 @@ def print_pkt(pkt):
 #
 # vxfld message handling
 #
+
 def handle_vxfld_msg(buf, addr):
     """ This is the entry function for the vxfld message.
 
@@ -210,12 +208,12 @@ def handle_vxfld_msg(buf, addr):
     response = vxfld.vxfldpkt.Refresh(holdtime=pkt.holdtime, originator=False)
     for (vni, iplist) in pkt.vni_vteps.items():
         for ip in iplist:
-	    if pkt.holdtime:
-		fdb_add(vni, ip, ageout)
-	    else:
-		# holdtime is 0 so delete from fdb
-		fdb_del(vni, ip)
-	response.vni_vteps[vni] = fdb_addrs(vni)
+            if pkt.holdtime:
+                fdb_add(vni, ip, ageout)
+            else:
+                # holdtime is 0 so delete from fdb
+                fdb_del(vni, ip)
+        response.vni_vteps[vni] = fdb_addrs(vni)
 
     if pkt.originator:
         # Send on to all peers but set originator to 0 so that they do
@@ -223,8 +221,8 @@ def handle_vxfld_msg(buf, addr):
         pkt.originator = 0
         send_to_peers(pkt)
 
-	# Send to originator the vtep membership for each of its VNIs
-	psock.sendto(str(response), addr)
+    # Send to originator the vtep membership for each of its VNIs
+    psock.sendto(str(response), addr)
 
 # End handle_vxfld_msg()
 
@@ -244,7 +242,6 @@ def send_to_peers(pkt):
 #    fdb[vni] = {addr1: ageout1, addr2: ageout2, ... }
 #
 
-
 def fdb_add(vni, addr, ageout):
     """
     Add this <vni, addr> to the fdb.  Just updates the ageout if tuple is
@@ -260,13 +257,12 @@ def fdb_del(vni, addr):
     # del the <vni, add> from the fdb
 
     if vni in fdb:
-	try:
-	    del fdb[vni][addr]
-	except:
-	    pass
-	if not len(fdb[vni]):
-	    del fdb[vni]
-
+        try:
+            del fdb[vni][addr]
+        except:
+            pass
+        if not len(fdb[vni]):
+            del fdb[vni]
 
 
 def fdb_addrs(vni):
@@ -305,7 +301,7 @@ def fdb_rel_holdtime():
 def print_fdb(signum=None, frame=None):
     # TODO A better job of formatting output
     import json
-    s= json.dumps(fdb_rel_holdtime())
+    s = json.dumps(fdb_rel_holdtime())
     lgr.info("Forwarding Database:\n%s" % s)
 
 
@@ -313,7 +309,6 @@ def print_fdb(signum=None, frame=None):
 #
 # Miscellaneous
 #
-
 
 def add_ip_addr():
     # TODO
@@ -329,7 +324,6 @@ def del_ip_addr():
 #
 # Run Loop
 #
-
 
 def run():
     global rsock
@@ -387,22 +381,22 @@ def run():
     next_ageout = 0
 
     while True:
-	global_lock.release()
+        global_lock.release()
         readable = ()
         writeable = ()
         errored = ()
         try:
             # Nothing to do but wait for an event on a sock.  It's ok
-	    # to delay ageout of fdb indefinitely.  But for
-	    # robustness and cleanliness, timeout after age_chack time
+            # to delay ageout of fdb indefinitely.  But for
+            # robustness and cleanliness, timeout after age_chack time
             readable, writeable, errored = select.select([rsock, psock],
                                                          [],
                                                          [],
-							 conf.age_check)
+                                                         conf.age_check)
         except select.error as e:
             if e[0] != errno.EINTR:
                 raise
-	global_lock.acquire()
+        global_lock.acquire()
 
         # We just woke up so age out old entries
         now = int(time.time())
@@ -477,4 +471,3 @@ except:
     sys.exit(1)
 
 sys.exit(0)
-
