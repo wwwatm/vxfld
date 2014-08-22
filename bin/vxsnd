@@ -116,7 +116,12 @@ class VXLAN(dpkt.Packet):
 def handle_vxlan_packet(pkt, addr):
     """ The entry point from the sock receive. """
     (srcip, srcport) = addr
-    v = VXLAN(pkt)
+
+    try:
+        v = VXLAN(pkt)
+    except Exception as e:
+        lgr.error("Unknown packet received from %s: %s" % (srcip, e.message))
+        return
 
     if not v.i:
         return
@@ -197,7 +202,12 @@ def handle_vxfld_msg(buf, addr):
 
     (srcip, srcport) = addr
 
-    pkt = vxfld.vxfldpkt.Refresh(buf)
+    try:
+        pkt = vxfld.vxfldpkt.Refresh(buf)
+    except Exception as e:
+        lgr.error("Unknown packet received from %s: %s" % (srcip, e.message))
+        return
+
     if pkt.type != vxfld.vxfldpkt.MsgType.refresh:
         lgr.warn('Unexpected vxfld pkt of type %d' % pkt.type)
         return
